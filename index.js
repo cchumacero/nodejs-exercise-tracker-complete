@@ -3,13 +3,19 @@ import express, { json } from 'express' // require -> commonJS
 import cors from 'cors'
 import { Exercise } from './models/Exercise.js'
 import { User } from './models/User.js'
+import { userRouter } from './controllers/user.js'
 import bodyParser from 'body-parser'
 import './database.js'
+import { loginRouter } from './controllers/login.js'
+import jwt from 'jsonwebtoken'
+import userExtractor from './middlewares/userExtractor.js'
 
 const app = express()
-app.use(cors())
-app.use(express.static('public'))
 app.use(json())
+app.use(cors('*'))
+
+app.use(express.static('public'))
+
 app.disable('x-powered-by')
 
 app.get('/', (req, res) => {
@@ -17,30 +23,32 @@ app.get('/', (req, res) => {
 })
 
 app.use(bodyParser.urlencoded({
-  extended: false
+  extended: true
 }))
 
-app.post('/api/users', (req, res) => {
-  const newUsername = req.body.username
+app.use('/api/users', userRouter)
+app.use('/api/login', loginRouter)
 
-  const newUser = new User({
-    username: newUsername
-  })
-  newUser.save().then(savedUser => {
-    res.json(savedUser)
-  })
-})
-
-app.get('/api/users', (req, res) => {
-  User.find().then(users => {
-    res.json(users)
-  })
-})
-
-app.post('/api/users/:_id/exercises', (req, res) => {
+app.post('/api/users/:_id/exercises', userExtractor, async (req, res) => {
   const { description } = req.body
   const duration = parseInt(req.body.duration)
   const userId = req.params._id
+  /*
+  const authorization = req.get('authorization')
+  let token = null
+  if (authorization && authorization.toLowerCase().startsWith('bearer')) {
+    token = authorization.substring(7)
+  }
+
+  let decodedToken = {}
+  try {
+    decodedToken = jwt.verify(token, process.env.SECRET)
+  } catch { }
+
+  if (!token || !decodedToken.id) {
+    return res.status(401).json({ error: 'token missing or invalid' })
+  }
+  */
   let date
   if (req.body.date) {
     date = (new Date(req.body.date)).toDateString()
@@ -55,6 +63,8 @@ app.post('/api/users/:_id/exercises', (req, res) => {
       date
     })
     newExercise.save().then((savedExercise) => {
+      foundUser.exercises = foundUser.exercises.concat(savedExercise._id)
+      foundUser.save()
       res.json({
         _id: foundUser._id,
         username: foundUser.username,
